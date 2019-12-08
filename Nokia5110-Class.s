@@ -1,8 +1,6 @@
-; Nokia5110-Class.s
-
+; Nokia5110-Class.s (trimmed & slightly modified)
 ; Sets up SSI0, PA6, PA to work with the
 ; SParkFun version of the Nokia 5110
-
 ; Pin connections
 ; ------------------------------------------
 ; Signal        (Nokia 5110) LaunchPad pin
@@ -15,7 +13,6 @@
 ; SSI0Tx        (DN,  pin 6) connected to PA5
 ; SSI0Clk       (SCLK, pin 7) connected to PA2
 ; back light    (LED, pin 8) not connected, consists of 4 white LEDs which draw ~80mA total
-
 ;GPIO Registers
 GPIO_PORTA_DATA			EQU	0x400043FC	; Port A Data
 GPIO_PORTA_IM      		EQU 0x40004010	; Interrupt Mask
@@ -24,7 +21,6 @@ GPIO_PORTA_AFSEL 		EQU 0x40004420	; Alt Function enable
 GPIO_PORTA_DEN   		EQU 0x4000451C	; Digital Enable
 GPIO_PORTA_AMSEL 		EQU 0x40004528	; Analog enable
 GPIO_PORTA_PCTL  		EQU 0x4000452C	; Alternate Functions
-
 GPIO_PORTB_DATA			EQU	0x400053FC	; Port B Data
 GPIO_PORTB_IM      		EQU 0x40005010	; Interrupt Mask
 GPIO_PORTB_DIR   		EQU 0x40005400	; Port Direction
@@ -32,7 +28,6 @@ GPIO_PORTB_AFSEL 		EQU 0x40005420	; Alt Function enable
 GPIO_PORTB_DEN   		EQU 0x4000551C	; Digital Enable
 GPIO_PORTB_AMSEL 		EQU 0x40005528	; Analog enable
 GPIO_PORTB_PCTL  		EQU 0x4000552C	; Alternate Functions
-	
 ;SSI Registers
 SSI0_CR0				EQU	0x40008000
 SSI0_CR1				EQU	0x40008004
@@ -40,23 +35,14 @@ SSI0_DR					EQU	0x40008008
 SSI0_SR					EQU	0x4000800C
 SSI0_CPSR				EQU	0x40008010
 SSI0_CC					EQU	0x40008FC8
-	
 ;System Registers
 SYSCTL_RCGCGPIO  		EQU 0x400FE608	; GPIO Gate Control
 SYSCTL_RCGCSSI			EQU	0x400FE61C	; SSI Gate Control
-		
 	    AREA    timer, CODE, READONLY
         THUMB
-
 		EXPORT	Nokia_Init
-		EXPORT	Out1BNokia
 		EXPORT	OutImgNokia
-		EXPORT	SetXYNokia
-		EXPORT	ClearNokia
-
-; ASCII table for characters to be displayed
-
-
+		EXPORT	Out1BNokia
 ;*****************************************************************
 ; Initializes Nokia display
 Nokia_Init
@@ -80,11 +66,9 @@ Nokia_Init
 		LDR		R1,=GPIO_PORTA_PCTL 	; configure PA2,3,4,5 as SSI
 		LDR 	R0, =0x222200           ; set 2,3,4 and 5 nibble ---------------
 		STR		R0,[R1]
-		
 		LDR		R1,=GPIO_PORTA_AMSEL	; disable analog functionality
 		MOV R0, #0x0
 		STR		R0,[R1]
-		
 	;Setup SSI	
 		LDR 	R1,=SYSCTL_RCGCSSI		; start SSI clock                  
 		MOV 	R0, #0x01                ; set bit 0 for SSI0 -------------------
@@ -94,12 +78,10 @@ Nokia_Init
 waitSSIClk								; allow clock to settle
 		SUBS	R0,R0,#0x01
 		BNE		waitSSIClk
-
 		LDR		R1,=SSI0_CR1			; disable SSI during setup and also set to Master
 		LDR 	R0, [R1];added
 		BIC 	R0, #0xFF			; clear bit 1	and  clear bit 2 (you can clear all bits)
 		STR		R0,[R1]
-		
 		; Configure baud rate PIOSC=16MHz,Baud=2MHz,CPSDVSR=4,SCR=1
 		; BR=SysClk/(CPSDVSR * (1 + SCR))
 		LDR		R1,=SSI0_CC				; use PIOSC (16MHz)		
@@ -127,25 +109,20 @@ waitSSIClk								; allow clock to settle
 		LDR 	R0, [R1];added
 		BIC		R0, #0x80 			; clear reset(PA7)--------------------- 	
 		STR		R0,[R1]
-	
 		MOV		R0,#10
 delReset		
 		SUBS	R0,R0,#1
 		BNE		delReset
-		
 		LDR		R1,=GPIO_PORTA_DATA		; 
 		LDR 	R0, [R1];added
 		ORR		R0, #0x80			; set reset(PA7)------------------------
 		STR		R0,[R1]					;
-		
 	; Setup LCD
 		LDR		R1,=GPIO_PORTA_DATA		; set PA6 low for Command
 		LDR		R0,[R1]
 		BIC		R0, #0x40			;
 		STR		R0,[R1]
-		
 		;chip active (PD=0)
-		;VERTICAL addressing (V=1)
 		;extended instruction set (H=1)
 		MOV		R5,#0x21
 		BL		Out1BNokia	
@@ -167,17 +144,13 @@ delReset
 		; clear screen
 		; screen memory is undefined after startup
 		BL		ClearNokia
-		
 waitCMDDone		
 		LDR		R1,=SSI0_SR				; wait until SSI is done
 		LDR		R0,[R1]
 		ANDS	R0,R0,#0x10
 		BNE		waitCMDDone
-		
-		POP{LR}
+		POP		{LR}
 		BX		LR
-;*****************************************************************		
-
 ;*****************************************************************	
 ; SSI Send routine. Bits to be sent passed via R5
 Out1BNokia
@@ -191,8 +164,6 @@ waitSendNokia
 		STRB	R5,[R1]
 		POP		{R0,R1}
 		BX		LR
-;*****************************************************************			
-
 ;*****************************************************************
 ; Send Image to Nokia routine	
 OutImgNokia
@@ -202,7 +173,7 @@ OutImgNokia
 		LDR		R0,[R1]
 		BIC		R0,#0x40
 		STR		R0,[R1]
-		MOV		R5,#0x22				; ensure H=0, V=1
+		MOV		R5,#0x22	; Only modification. Ensure H=0, V=1
 		BL		Out1BNokia	
 		MOV		R5,#0x40				; set Y address to 0
 		BL		Out1BNokia
@@ -227,42 +198,6 @@ sendNxtByteNokia
 		BNE		sendNxtByteNokia		
 		POP		{R0-R4,LR}
 		BX		LR
-;*****************************************************************
-
-;*****************************************************************
-; Set X,Y coordinates of LCD		
-SetXYNokia	
-	; X values 0-83 (decimal) passed via R0
-	; Y values 0-5	(decimal) passed via R1
-	; DC is left high, so data can be sent after
-		PUSH	{R2-R5,LR}
-		PUSH	{R0-R1}
-		LDR		R1,=GPIO_PORTA_DATA		; set PA6 low for Command
-		LDR		R0,[R1]
-		BIC		R0,#0x40
-		STR		R0,[R1]
-		MOV		R5,#0x20				; ensure H=0
-		BL		Out1BNokia	
-		POP		{R0-R1}
-		MOV		R5,R1					; set Y address
-		ORR		R5,#0x40
-		BL		Out1BNokia
-		MOV		R5,R0					; set X address
-		ORR		R5,#0x80
-		BL		Out1BNokia
-waitXYCMD		
-		LDR		R1,=SSI0_SR				; wait until SSI is done
-		LDR		R0,[R1]
-		ANDS	R0,R0,#0x10
-		BNE		waitXYCMD
-		LDR		R1,=GPIO_PORTA_DATA		; set PA6 high for Data
-		LDR		R0,[R1]
-		ORR		R0,#0x40
-		STR		R0,[R1]
-		POP		{R2-R5,LR}
-		BX		LR
-;*****************************************************************
-
 ;*****************************************************************
 ; clear LCD screen
 ClearNokia

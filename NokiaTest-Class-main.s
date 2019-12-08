@@ -1,24 +1,15 @@
-;****************************************
-; NokiaTest-Class-main.s
-; Used to test Nokia5110-Class.s
-; inlcude startup.s
-
-
+; Oscilloscope.s - Jake Tucker, Ryan Gloekler, Zane Miller
+; Display a microphone input on the Nokia screen as a waveform
+; Include StartupNokia.s, ATDonline.s, and Nokia5110-Class.s
 ;***************************************************************
 ; Program section
 ;***************************************************************
-			
-;LABEL		DIRECTIVE	VALUE			COMMENT
 			AREA	img,DATA,READWRITE
 waveimg		SPACE	504		; Space for waveform image
 currsamp	SPACE	1		; Move current sample from interrupt to main
 samps		SPACE	84		; Space for samples
 			AREA    |.text|, READONLY, CODE
 			THUMB
-
-tstmsg		DCB		"This is some          text",0x04
-			SPACE	0		; added for padding
-Stack           	EQU		0x00000400		; Stack size
 			; Interupt symbols
 NVIC_ST_CTRL		EQU		0xE000E010
 NVIC_ST_RELOAD  	EQU		0xE000E014
@@ -34,26 +25,18 @@ ACREFCTL			EQU		0x010		; offset for Analog Comp. Reference Voltage Control
 ACRIS				EQU		0x004		; offset for Analog Comp. Raw Interrupt Status
 RCGCGPIO			EQU     0x608		; offset for GPIO enable
 FIRST				EQU		0x20000400
-GPIO_PORTA_DATA			EQU	0x400043FC	; Port A Data
-	
-GPIO_PORTC_DIR   		EQU 0x40006400	; Port Direction
-GPIO_PORTC_AFSEL 		EQU 0x40006420	; Alt Function enable
-GPIO_PORTC_DEN   		EQU 0x4000651C	; Digital Enable
-GPIO_PORTC_AMSEL 		EQU 0x40006528	; Analog enable
-GPIO_PORTC_PCTL  		EQU 0x4000652C	; Alternate Functions
-
-				
+GPIO_PORTA_DATA		EQU		0x400043FC	; Port A Data
+GPIO_PORTC_DIR   	EQU 	0x40006400	; Port Direction
+GPIO_PORTC_AFSEL 	EQU 	0x40006420	; Alt Function enable
+GPIO_PORTC_DEN   	EQU 	0x4000651C	; Digital Enable
+GPIO_PORTC_AMSEL 	EQU 	0x40006528	; Analog enable
+GPIO_PORTC_PCTL  	EQU		0x4000652C	; Alternate Functions
 			EXTERN	Nokia_Init
 			EXTERN	OutImgNokia
-			EXTERN	SetXYNokia
-			EXTERN	Out1BNokia
-			EXTERN	OutStrNokia
-			EXTERN	ClearNokia
-
-			EXPORT  Start
 			EXTERN	ATD_Init
 			EXTERN	ATD_Sample
-
+			EXTERN	Out1BNokia
+			EXPORT	Start
 Start		BL		Nokia_Init			; initialize LCD
 ; Setup ATD
 			BL		ATD_Init		; Initialize ATD for PE3 pin measurement
@@ -87,70 +70,49 @@ wait   		WFI						; Wait for the interrupt to run
 delayend	SUBS	R2,#1
 			BNE		delayend
 			B		mloop			; Done, next waveform
-
-
-delay		PUSH	{R0}
-			MOV		R0,#0x8555
-			MOVT	R0,#0x0140
-del			SUBS	R0,#1
-			BNE		del
-			POP		{R0}
-			BX		LR
-
-delayTrans	PUSH	{R0}
-			MOV		R0,#0x5855			;~250ms
-			MOVT	R0,#0x0014
-dt			SUBS	R0,#1
-			BNE		dt
-			POP		{R0}
-			BX		LR
-
-
+;*********************************************************************
+; Value scaling: Converts ATD output to vertical pixel position
 scale_value
-		SUB R0, #0x8F8 ; code for scaling the result of ATD
-		MOV R1, #0x30
+		SUB R0, #0x974		; 1.9 V recorded as 0x974
+		MOV R1, #0x30		; Multiply by screen height (0x30 px)
 		MUL R0, R1
-		MOV R1, #0x175
+		MOV R1, #0xF8		; Divide by range - 0.2 V recorded as 0xF8
 		UDIV R0, R1
-		CMP R0, #0x30
-		BLO valid
-		MOV R0, #0x2F
-valid   
-		BX LR
-
-
-
+		CMP R0, #0x30		; Is this a valid pixel position?
+		BLO valid			; If so, return it in R0
+		CMP	R0, #0x1000		; If not, map to an edge of the screen
+		MOVLO R0, #0x2F		; Voltage over, no overflow, map to bottom
+		MOVHS R0, #0x00		; Voltage under, underflow, map to top
+valid   BX LR
+;*********************************************************************
+; Initialize the analog comparator. Trigger: falling edge, 2.0 V
 analogCMP_ini
-			; set up the analog comparator to 
-			; trigger on a rising edge, compared 
-			; to the reference voltage (+ 2.0 V)
-			
-; Enable the analog comparator clock by writing a value of 0x0000.0001 to the RCGCACMP
-; register in the System Control module
+; Enable the analog comparator clock by writing a value of 0x0000.0001
+; to the RCGCACMP register in the System Control module
 		PUSH	{R0}
 		MOV 	R0, #0x01
 		LDR		R1,=BASE + RCGCACMP
 		STR 	R0, [R1] ; storing the correct value in control module
-		LDR		R1,=GPIO_PORTC_DIR		; no outputs
-		MOV 	R0, #0x40            	; make PC7 input ---------------------
+		LDR		R1,=GPIO_PORTC_DIR		; Set up port C direction
+		MOV 	R0, #0x40            	; Make PC7 input, others unused
 		STR		R0,[R1]
-		LDR		R1,=GPIO_PORTC_AFSEL	; enable alt funct on PC7
-		MOV 	R0, #0x40				;---------------------
-		STR		R0,[R1]
-		LDR		R1,=GPIO_PORTC_AMSEL	; enable analog on PC7
+		LDR		R1,=GPIO_PORTC_AFSEL	; Enable alt funct on PC7
 		MOV 	R0, #0x40
 		STR		R0,[R1]
-		LDR		R1,=ACMP_BASE + ACCTL	; configure comparator
-		MOV		R0,#0x402				; set bits 10 and 2 for internal ref, falling edge
+		LDR		R1,=GPIO_PORTC_AMSEL	; Enable analog on PC7
+		MOV 	R0, #0x40
 		STR		R0,[R1]
-		LDR		R1,=ACMP_BASE + ACREFCTL; configure reference
-		MOV		R0,#0x20B				; set bit 9 to enable & 3:0 to B for ~2V
-		STR		R0,[R1]
+		LDR		R1,=ACMP_BASE + ACCTL	; Configure comparator:
+		MOV		R0,#0x402				; set bits 10 and 2
+		STR		R0,[R1]					; for internal ref, falling edge
+		LDR		R1,=ACMP_BASE + ACREFCTL; Configure reference:
+		MOV		R0,#0x20B				; set bit 9 to enable
+		STR		R0,[R1]					; and set bits 3:0 to 0xB for ~2V
 		POP		{R0}
 		BX		LR
-
+;********************************************************************
+; SysTick initialization: same as used in lab 7
 systick_ini							;initialize interupts subroutine
-		;LDR 	R1, =NVIC_ST_BASE	; Use this base for Systick registers
     	PUSH	{R0}
 		MOV 	R0, #0
 		LDR 	R1,=NVIC_ST_CTRL
@@ -168,7 +130,8 @@ systick_ini							;initialize interupts subroutine
     	STR 	R0, [R1]    	;  and enabling interrupts	
 		POP		{R0}
 		BX LR
-
+;********************************************************************
+; Image waveform generator: generates an image from set of coordinates
 imgwav
 		PUSH	{LR}
 		LDR		R7,=GPIO_PORTA_DATA
@@ -196,7 +159,8 @@ imgrow	CMP		R0,#8		; Is R0 in this byte?
 		BNE		imgcol		; Loop until end of image
 		POP		{LR}		; Image complete
 		BX		LR
-		
+;*******************************************************************
+; SysTick handler: grabs samples at defined intervals
 	EXPORT	SysTick_Handler
 SysTick_Handler
 		PUSH {LR}
